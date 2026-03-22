@@ -1,37 +1,107 @@
-// State Management (using LocalStorage for persistence in this prototype)
-// Note: LocalStorage only works within the same browser. For true cross-device sharing, a backend database is required.
+// Global API Configuration (Using jsonblob.com for free cloud syncing)
+// This enables any user around the world to enter the family code and sync real-time
+const API_BASE = 'https://jsonblob.com/api/jsonBlob';
+
 const AppState = {
-    families: {}, // Object to store multiple families by their code
-    familyCode: null, // Currently active family code
-    currentUser: null, // Currently active user name
+    familyCode: null, // Now stores the global Blob ID
+    currentFamily: null, // Remote data
+    currentUser: null,
+    syncInterval: null,
 
     init() {
-        const data = localStorage.getItem('familyExpenseData');
+        // Load only the connection config, real data comes from Cloud
+        const data = localStorage.getItem('familyExpenseRemoteConfig');
         if (data) {
             const parsed = JSON.parse(data);
-            this.families = parsed.families || {};
             this.familyCode = parsed.familyCode || null;
             this.currentUser = parsed.currentUser || null;
         }
+
+        if (this.familyCode) {
+            this.startSync();
+        } else {
+            renderDashboard(); // render onboarding
+        }
     },
 
-    save() {
-        localStorage.setItem('familyExpenseData', JSON.stringify({
-            families: this.families,
+    saveConfig() {
+        localStorage.setItem('familyExpenseRemoteConfig', JSON.stringify({
             familyCode: this.familyCode,
             currentUser: this.currentUser
         }));
     },
-    
-    get currentFamily() {
-        return this.families[this.familyCode] || null;
+
+    async fetchFamilyData(code) {
+        try {
+            const res = await fetch(`${API_BASE}/${code}`, {
+                headers: { 'Accept': 'application/json' }
+            });
+            if (!res.ok) throw new Error('Not found');
+            return await res.json();
+        } catch (e) {
+            return null;
+        }
+    },
+
+    async setFamilyData(code, data) {
+        try {
+            await fetch(`${API_BASE}/${code}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            return true;
+        } catch (e) {
+            return false;
+        }
+    },
+
+    async createFamilyData(data) {
+        try {
+            const res = await fetch(API_BASE, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            const location = res.headers.get('Location');
+            return location ? location.split('/').pop() : null;
+        } catch (e) {
+            return null;
+        }
+    },
+
+    startSync() {
+        if (this.syncInterval) clearInterval(this.syncInterval);
+        this.sync(); // immediate fetch
+        
+        // Auto-refresh every 3.5 seconds to simulate real-time sockets
+        this.syncInterval = setInterval(() => {
+            this.sync(true);
+        }, 3500); 
+    },
+
+    stopSync() {
+        if (this.syncInterval) clearInterval(this.syncInterval);
+        this.syncInterval = null;
+    },
+
+    async sync(silent = false) {
+        if (!this.familyCode) return;
+        const data = await this.fetchFamilyData(this.familyCode);
+        if (data) {
+            this.currentFamily = data;
+            renderDashboard();
+        } else if (!silent) {
+            showToast('Failed to sync. Verify internet connection.', 'error');
+        }
     },
 
     clear() {
-        localStorage.removeItem('familyExpenseData');
-        this.families = {};
+        localStorage.removeItem('familyExpenseRemoteConfig');
         this.familyCode = null;
+        this.currentFamily = null;
         this.currentUser = null;
+        this.stopSync();
     }
 };
 
@@ -42,17 +112,14 @@ const els = {
     tabBtns: document.querySelectorAll('.tab-btn'),
     tabContents: document.querySelectorAll('.tab-content'),
     
-    // Create Family
     initialBudget: document.getElementById('initial-budget'),
     creatorName: document.getElementById('creator-name'),
     generateCodeBtn: document.getElementById('generate-code-btn'),
     
-    // Join Family
     joinCode: document.getElementById('join-code'),
     joinName: document.getElementById('join-name'),
     joinFamilyBtn: document.getElementById('join-family-btn'),
     
-    // Dashboard Header
     displayFamilyCode: document.getElementById('display-family-code'),
     copyCodeBtn: document.getElementById('copy-code-btn'),
     currentUserAvatar: document.getElementById('current-user-avatar'),
@@ -60,22 +127,18 @@ const els = {
     logoutBtn: document.getElementById('logout-btn'),
     clearDataBtn: document.getElementById('clear-data-btn'),
     
-    // Stats
     statTotalBudget: document.getElementById('stat-total-budget'),
     statTotalExpenses: document.getElementById('stat-total-expenses'),
     statRemainingBalance: document.getElementById('stat-remaining-balance'),
     
-    // Expense Form
     expenseForm: document.getElementById('expense-form'),
     expenseAmount: document.getElementById('expense-amount'),
     expenseDesc: document.getElementById('expense-desc'),
     expenseCategory: document.getElementById('expense-category'),
     
-    // Lists
     membersList: document.getElementById('members-list'),
     expenseList: document.getElementById('expense-list'),
     
-    // Add Member mini form
     showAddMemberBtn: document.getElementById('show-add-member-btn'),
     addMemberForm: document.getElementById('add-member-form'),
     newMemberName: document.getElementById('new-member-name'),
@@ -119,11 +182,6 @@ const getCategoryIcon = (category) => {
     return icons[category] || icons['Other'];
 };
 
-const generateRandomCode = () => {
-    return Math.random().toString(36).substring(2, 8).toUpperCase();
-};
-
-// UI Interactions
 const showToast = (message, type = 'success') => {
     const icon = type === 'success' ? 'ri-check-line' : 'ri-error-warning-line';
     els.toast.innerHTML = `<i class="${icon}"></i> ${message}`;
@@ -132,6 +190,17 @@ const showToast = (message, type = 'success') => {
     setTimeout(() => {
         els.toast.classList.remove('show');
     }, 3000);
+};
+
+const setBtnLoading = (btn, isLoading, originalText = '') => {
+    if (isLoading) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="ri-loader-4-line ri-spin"></i> Processing...`;
+        return btn.innerText;
+    } else {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
 };
 
 const switchTab = (tabId) => {
@@ -155,13 +224,11 @@ const renderDashboard = () => {
 
     const family = AppState.currentFamily;
 
-    // Header
-    els.displayFamilyCode.innerText = AppState.familyCode;
+    els.displayFamilyCode.innerHTML = `${AppState.familyCode}`;
     els.currentUsername.innerText = AppState.currentUser;
     els.currentUserAvatar.innerText = getInitials(AppState.currentUser);
     els.currentUserAvatar.style.background = getRandomColor(AppState.currentUser);
 
-    // Calculate Totals
     const totalExpenses = family.expenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
     const remaining = family.totalBudget - totalExpenses;
 
@@ -169,19 +236,13 @@ const renderDashboard = () => {
     els.statTotalExpenses.innerText = formatMoney(totalExpenses);
     els.statRemainingBalance.innerText = formatMoney(remaining);
 
-    // Update color based on remaining
-    if (remaining < 0) {
-        els.statRemainingBalance.style.color = 'var(--warning)';
-    } else {
-        els.statRemainingBalance.style.color = '';
-    }
+    if (remaining < 0) els.statRemainingBalance.style.color = 'var(--warning)';
+    else els.statRemainingBalance.style.color = '';
 
-    // Render Members
     els.membersList.innerHTML = '';
     family.members.forEach(member => {
         const li = document.createElement('li');
         li.className = 'member-item';
-        // count expenses for member
         const memExps = family.expenses.filter(e => e.memberName === member).length;
         li.innerHTML = `
             <div class="member-avatar" style="background: ${getRandomColor(member)}">${getInitials(member)}</div>
@@ -193,7 +254,6 @@ const renderDashboard = () => {
         els.membersList.appendChild(li);
     });
 
-    // Render Expenses
     if (family.expenses.length === 0) {
         els.expenseList.innerHTML = `
             <div class="empty-state">
@@ -203,7 +263,6 @@ const renderDashboard = () => {
         `;
     } else {
         els.expenseList.innerHTML = '';
-        // Sort descending by date
         const sortedExpenses = [...family.expenses].sort((a,b) => new Date(b.date) - new Date(a.date));
         
         sortedExpenses.forEach(exp => {
@@ -237,58 +296,77 @@ els.tabBtns.forEach(btn => {
     });
 });
 
-els.generateCodeBtn.addEventListener('click', () => {
+els.generateCodeBtn.addEventListener('click', async () => {
     const budget = parseFloat(els.initialBudget.value);
     const creatorName = els.creatorName.value.trim();
 
     if (!budget || budget <= 0) return showToast('Please enter a valid budget', 'error');
     if (!creatorName) return showToast('Please enter your name', 'error');
 
-    const code = generateRandomCode();
+    const origText = setBtnLoading(els.generateCodeBtn, true);
     
-    // Store family in families repository
-    AppState.families[code] = {
+    const initialData = {
         totalBudget: budget,
         members: [creatorName],
         expenses: []
     };
+    
+    const code = await AppState.createFamilyData(initialData);
+    if (!code) {
+        setBtnLoading(els.generateCodeBtn, false, 'Generate Family Code <i class="ri-arrow-right-line"></i>');
+        return showToast('Failed to create family online. Check connection.', 'error');
+    }
 
     AppState.familyCode = code;
     AppState.currentUser = creatorName;
-    AppState.save();
-    showToast('Family created successfully!');
+    AppState.currentFamily = initialData;
+    AppState.saveConfig();
+    AppState.startSync();
+    
+    setBtnLoading(els.generateCodeBtn, false, 'Generate Family Code <i class="ri-arrow-right-line"></i>');
+    showToast('Global Family Session Created!');
     renderDashboard();
 });
 
-els.joinFamilyBtn.addEventListener('click', () => {
-    const code = els.joinCode.value.trim().toUpperCase();
+els.joinFamilyBtn.addEventListener('click', async () => {
+    const code = els.joinCode.value.trim(); // Code is now a UUID
     const name = els.joinName.value.trim();
 
     if (!code) return showToast('Please enter a family code', 'error');
     if (!name) return showToast('Please enter your name', 'error');
 
-    if (AppState.families[code]) {
-        // Family exists logically in our local repository
-        if (!AppState.families[code].members.includes(name)) {
-            AppState.families[code].members.push(name);
+    const origText = setBtnLoading(els.joinFamilyBtn, true);
+
+    const remoteData = await AppState.fetchFamilyData(code);
+    
+    if (remoteData) {
+        if (!remoteData.members.includes(name)) {
+            remoteData.members.push(name);
+            await AppState.setFamilyData(code, remoteData);
         }
+        
         AppState.familyCode = code;
         AppState.currentUser = name;
-        AppState.save();
-        showToast('Joined family successfully!');
+        AppState.currentFamily = remoteData;
+        AppState.saveConfig();
+        AppState.startSync();
+        
+        setBtnLoading(els.joinFamilyBtn, false, 'Join Family <i class="ri-arrow-right-line"></i>');
+        showToast('Joined global family session!');
         renderDashboard();
     } else {
-        showToast('Family code not found. Please create it first.', 'error');
+        setBtnLoading(els.joinFamilyBtn, false, 'Join Family <i class="ri-arrow-right-line"></i>');
+        showToast('Invalid Family Code. Family not found in cloud.', 'error');
     }
 });
 
 els.copyCodeBtn.addEventListener('click', () => {
     navigator.clipboard.writeText(AppState.familyCode).then(() => {
-        showToast('Code copied to clipboard!');
+        showToast('Global Code copied to clipboard!');
     });
 });
 
-els.expenseForm.addEventListener('submit', (e) => {
+els.expenseForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const amount = parseFloat(els.expenseAmount.value);
     const desc = els.expenseDesc.value.trim();
@@ -306,12 +384,21 @@ els.expenseForm.addEventListener('submit', (e) => {
         date: new Date().toISOString()
     };
 
-    AppState.currentFamily.expenses.push(newExpense);
-    AppState.save();
+    // Grab latest data before adding expense to avoid overwriting others simultaneously logging
+    const latestData = await AppState.fetchFamilyData(AppState.familyCode);
+    if (!latestData) return showToast('Error: Cloud session disconnected', 'error');
     
-    showToast('Expense added!');
-    els.expenseForm.reset();
-    renderDashboard();
+    latestData.expenses.push(newExpense);
+    const success = await AppState.setFamilyData(AppState.familyCode, latestData);
+    
+    if (success) {
+        AppState.currentFamily = latestData;
+        showToast('Expense synced globally!');
+        els.expenseForm.reset();
+        renderDashboard();
+    } else {
+        showToast('Failed to sync expense', 'error');
+    }
 });
 
 els.showAddMemberBtn.addEventListener('click', () => {
@@ -321,7 +408,7 @@ els.showAddMemberBtn.addEventListener('click', () => {
     }
 });
 
-els.addMemberBtn.addEventListener('click', () => {
+els.addMemberBtn.addEventListener('click', async () => {
     const newName = els.newMemberName.value.trim();
     if (!newName) return;
     
@@ -329,35 +416,39 @@ els.addMemberBtn.addEventListener('click', () => {
         return showToast('Member already exists', 'error');
     }
 
-    AppState.currentFamily.members.push(newName);
-    AppState.save();
-    els.newMemberName.value = '';
-    els.addMemberForm.classList.add('hidden');
-    showToast('Member added!');
-    renderDashboard();
+    const latestData = await AppState.fetchFamilyData(AppState.familyCode);
+    if (!latestData) return showToast('Error: Cloud session disconnected', 'error');
+    
+    if (!latestData.members.includes(newName)) {
+        latestData.members.push(newName);
+        const success = await AppState.setFamilyData(AppState.familyCode, latestData);
+        if (success) {
+            AppState.currentFamily = latestData;
+            els.newMemberName.value = '';
+            els.addMemberForm.classList.add('hidden');
+            showToast('Member added globally!');
+            renderDashboard();
+        }
+    }
 });
 
 els.logoutBtn.addEventListener('click', () => {
-    if(confirm(`Are you sure you want to log out of family ${AppState.familyCode}?`)) {
-        AppState.currentUser = null;
-        AppState.familyCode = null;
-        AppState.save();
+    if(confirm('Are you sure you want to log out of this family session?')) {
+        AppState.clear();
         els.onboardingScreen.classList.add('active');
         els.dashboardScreen.classList.remove('active');
-        // Clear input fields when going back to join screen
         els.joinCode.value = '';
         els.joinName.value = '';
     }
 });
 
 els.clearDataBtn.addEventListener('click', () => {
-    if(confirm('Developer Action: Clear all local storage data forever?')) {
+    if(confirm('Developer Action: Disconnect local device from global session?')) {
         AppState.clear();
         renderDashboard();
-        showToast('Data cleared.');
+        showToast('Device disconnected.');
     }
 });
 
 // Init
 AppState.init();
-renderDashboard();
