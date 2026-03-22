@@ -1,40 +1,37 @@
 // State Management (using LocalStorage for persistence in this prototype)
+// Note: LocalStorage only works within the same browser. For true cross-device sharing, a backend database is required.
 const AppState = {
-    familyCode: null,
-    totalBudget: 0,
-    currentUser: null,
-    members: [],
-    expenses: [],
+    families: {}, // Object to store multiple families by their code
+    familyCode: null, // Currently active family code
+    currentUser: null, // Currently active user name
 
     init() {
         const data = localStorage.getItem('familyExpenseData');
         if (data) {
             const parsed = JSON.parse(data);
-            this.familyCode = parsed.familyCode;
-            this.totalBudget = parsed.totalBudget;
-            this.currentUser = parsed.currentUser;
-            this.members = parsed.members || [];
-            this.expenses = parsed.expenses || [];
+            this.families = parsed.families || {};
+            this.familyCode = parsed.familyCode || null;
+            this.currentUser = parsed.currentUser || null;
         }
     },
 
     save() {
         localStorage.setItem('familyExpenseData', JSON.stringify({
+            families: this.families,
             familyCode: this.familyCode,
-            totalBudget: this.totalBudget,
-            currentUser: this.currentUser,
-            members: this.members,
-            expenses: this.expenses
+            currentUser: this.currentUser
         }));
+    },
+    
+    get currentFamily() {
+        return this.families[this.familyCode] || null;
     },
 
     clear() {
         localStorage.removeItem('familyExpenseData');
+        this.families = {};
         this.familyCode = null;
-        this.totalBudget = 0;
         this.currentUser = null;
-        this.members = [];
-        this.expenses = [];
     }
 };
 
@@ -102,7 +99,6 @@ const getInitials = (name) => {
 };
 
 const getRandomColor = (name) => {
-    // Simple hash to consistently assign a color to a name
     let hash = 0;
     for (let i = 0; i < name.length; i++) {
         hash = name.charCodeAt(i) + ((hash << 5) - hash);
@@ -148,7 +144,7 @@ const switchTab = (tabId) => {
 };
 
 const renderDashboard = () => {
-    if (!AppState.familyCode) {
+    if (!AppState.familyCode || !AppState.currentFamily) {
         els.onboardingScreen.classList.add('active');
         els.dashboardScreen.classList.remove('active');
         return;
@@ -157,6 +153,8 @@ const renderDashboard = () => {
     els.onboardingScreen.classList.remove('active');
     els.dashboardScreen.classList.add('active');
 
+    const family = AppState.currentFamily;
+
     // Header
     els.displayFamilyCode.innerText = AppState.familyCode;
     els.currentUsername.innerText = AppState.currentUser;
@@ -164,10 +162,10 @@ const renderDashboard = () => {
     els.currentUserAvatar.style.background = getRandomColor(AppState.currentUser);
 
     // Calculate Totals
-    const totalExpenses = AppState.expenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
-    const remaining = AppState.totalBudget - totalExpenses;
+    const totalExpenses = family.expenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
+    const remaining = family.totalBudget - totalExpenses;
 
-    els.statTotalBudget.innerText = formatMoney(AppState.totalBudget);
+    els.statTotalBudget.innerText = formatMoney(family.totalBudget);
     els.statTotalExpenses.innerText = formatMoney(totalExpenses);
     els.statRemainingBalance.innerText = formatMoney(remaining);
 
@@ -180,11 +178,11 @@ const renderDashboard = () => {
 
     // Render Members
     els.membersList.innerHTML = '';
-    AppState.members.forEach(member => {
+    family.members.forEach(member => {
         const li = document.createElement('li');
         li.className = 'member-item';
         // count expenses for member
-        const memExps = AppState.expenses.filter(e => e.memberName === member).length;
+        const memExps = family.expenses.filter(e => e.memberName === member).length;
         li.innerHTML = `
             <div class="member-avatar" style="background: ${getRandomColor(member)}">${getInitials(member)}</div>
             <div style="flex: 1;">
@@ -196,7 +194,7 @@ const renderDashboard = () => {
     });
 
     // Render Expenses
-    if (AppState.expenses.length === 0) {
+    if (family.expenses.length === 0) {
         els.expenseList.innerHTML = `
             <div class="empty-state">
                 <i class="ri-file-list-3-line"></i>
@@ -206,7 +204,7 @@ const renderDashboard = () => {
     } else {
         els.expenseList.innerHTML = '';
         // Sort descending by date
-        const sortedExpenses = [...AppState.expenses].sort((a,b) => new Date(b.date) - new Date(a.date));
+        const sortedExpenses = [...family.expenses].sort((a,b) => new Date(b.date) - new Date(a.date));
         
         sortedExpenses.forEach(exp => {
             const div = document.createElement('div');
@@ -246,12 +244,17 @@ els.generateCodeBtn.addEventListener('click', () => {
     if (!budget || budget <= 0) return showToast('Please enter a valid budget', 'error');
     if (!creatorName) return showToast('Please enter your name', 'error');
 
-    AppState.familyCode = generateRandomCode();
-    AppState.totalBudget = budget;
-    AppState.currentUser = creatorName;
-    AppState.members = [creatorName];
-    AppState.expenses = [];
+    const code = generateRandomCode();
     
+    // Store family in families repository
+    AppState.families[code] = {
+        totalBudget: budget,
+        members: [creatorName],
+        expenses: []
+    };
+
+    AppState.familyCode = code;
+    AppState.currentUser = creatorName;
     AppState.save();
     showToast('Family created successfully!');
     renderDashboard();
@@ -264,27 +267,18 @@ els.joinFamilyBtn.addEventListener('click', () => {
     if (!code) return showToast('Please enter a family code', 'error');
     if (!name) return showToast('Please enter your name', 'error');
 
-    // In a real app, we would fetch from DB here.
-    // For prototype, we either use local state if it matches, or mock joining.
-    if (AppState.familyCode && AppState.familyCode === code) {
-        // App exists logically
-        if (!AppState.members.includes(name)) {
-            AppState.members.push(name);
+    if (AppState.families[code]) {
+        // Family exists logically in our local repository
+        if (!AppState.families[code].members.includes(name)) {
+            AppState.families[code].members.push(name);
         }
+        AppState.familyCode = code;
         AppState.currentUser = name;
         AppState.save();
         showToast('Joined family successfully!');
         renderDashboard();
     } else {
-        // Mock join scenario if local storage doesn't have it (Simulating joining a friend's code that we don't hold locally)
-        AppState.familyCode = code;
-        AppState.totalBudget = 5000; // Mock budget
-        AppState.currentUser = name;
-        AppState.members = ['Mom', 'Dad', name]; // Mock members
-        AppState.expenses = [];
-        AppState.save();
-        showToast('Joined family (Mock DB)!');
-        renderDashboard();
+        showToast('Family code not found. Please create it first.', 'error');
     }
 });
 
@@ -312,7 +306,7 @@ els.expenseForm.addEventListener('submit', (e) => {
         date: new Date().toISOString()
     };
 
-    AppState.expenses.push(newExpense);
+    AppState.currentFamily.expenses.push(newExpense);
     AppState.save();
     
     showToast('Expense added!');
@@ -331,11 +325,11 @@ els.addMemberBtn.addEventListener('click', () => {
     const newName = els.newMemberName.value.trim();
     if (!newName) return;
     
-    if (AppState.members.includes(newName)) {
+    if (AppState.currentFamily.members.includes(newName)) {
         return showToast('Member already exists', 'error');
     }
 
-    AppState.members.push(newName);
+    AppState.currentFamily.members.push(newName);
     AppState.save();
     els.newMemberName.value = '';
     els.addMemberForm.classList.add('hidden');
@@ -344,11 +338,15 @@ els.addMemberBtn.addEventListener('click', () => {
 });
 
 els.logoutBtn.addEventListener('click', () => {
-    if(confirm('Are you sure you want to log out of this family?')) {
+    if(confirm(`Are you sure you want to log out of family ${AppState.familyCode}?`)) {
         AppState.currentUser = null;
-        // Don't clear data, just log out user locally. Usually you'd clear entirely and drop to login.
+        AppState.familyCode = null;
+        AppState.save();
         els.onboardingScreen.classList.add('active');
         els.dashboardScreen.classList.remove('active');
+        // Clear input fields when going back to join screen
+        els.joinCode.value = '';
+        els.joinName.value = '';
     }
 });
 
