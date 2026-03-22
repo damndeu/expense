@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Family Expense Tracker</title>
+  <link rel="stylesheet" href="styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+</head>
+
+<body>
+  <div class="app-container">
+    <!-- Onboarding Screen (Generate Code, Join, Set Budget, Add Members) -->
+    <div id="onboarding-screen" class="screen active">
+      <div class="glass-card onboarding-card">
+        <div class="header-text">
+          <h1>Family<br><span>Wealth</span></h1>
+          <p>Track expenses together, effortlessly.</p>
+        </div>
+
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="create">Create Family</button>
+          <button class="tab-btn" data-tab="join">Join Family</button>
+        </div>
+
+        <div class="tab-content active" id="create-tab">
+          <div class="input-group">
+            <label>Total Available Budget</label>
+            <div class="input-icon">
+              <i class="ri-money-dollar-circle-line"></i>
+              <input type="number" id="initial-budget" placeholder="0.00" min="0" step="0.01">
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label>Your Name</label>
+            <div class="input-icon">
+              <i class="ri-user-smile-line"></i>
+              <input type="text" id="creator-name" placeholder="E.g., Mom, Dad">
+            </div>
+          </div>
+
+          <button class="primary-btn" id="generate-code-btn">Generate Family Code <i
+              class="ri-arrow-right-line"></i></button>
+        </div>
+
+        <div class="tab-content" id="join-tab">
+          <div class="input-group">
+            <label>Family Code</label>
+            <div class="input-icon">
+              <i class="ri-key-line"></i>
+              <input type="text" id="join-code" placeholder="Enter 6-digit code">
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label>Your Name</label>
+            <div class="input-icon">
+              <i class="ri-user-add-line"></i>
+              <input type="text" id="join-name" placeholder="E.g., Son, Daughter">
+            </div>
+          </div>
+
+          <button class="primary-btn" id="join-family-btn">Join Family <i class="ri-arrow-right-line"></i></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Dashboard Screen -->
+    <div id="dashboard-screen" class="screen">
+      <header class="dashboard-header">
+        <div>
+          <h2>Dashboard</h2>
+          <p class="family-code-display">Family Code: <strong id="display-family-code">---</strong> <i
+              class="ri-file-copy-line copy-icon" id="copy-code-btn" title="Copy Code"></i></p>
+        </div>
+        <div class="user-profile">
+          <div class="avatar" id="current-user-avatar">?</div>
+          <span id="current-username">User</span>
+          <button id="logout-btn" class="icon-btn logout-btn" title="Exit Family"><i
+              class="ri-logout-box-r-line"></i></button>
+        </div>
+      </header>
+
+      <div class="stats-grid">
+        <div class="stat-card glass-card">
+          <div class="stat-icon"><i class="ri-wallet-3-line"></i></div>
+          <div class="stat-info">
+            <p>Total Budget</p>
+            <h3 id="stat-total-budget">$0.00</h3>
+          </div>
+        </div>
+        <div class="stat-card glass-card">
+          <div class="stat-icon warning"><i class="ri-shopping-cart-2-line"></i></div>
+          <div class="stat-info">
+            <p>Total Expenses</p>
+            <h3 id="stat-total-expenses">$0.00</h3>
+          </div>
+        </div>
+        <div class="stat-card glass-card gradient-card">
+          <div class="stat-icon success"><i class="ri-safe-2-line"></i></div>
+          <div class="stat-info">
+            <p>Remaining Balance</p>
+            <h3 id="stat-remaining-balance">$0.00</h3>
+          </div>
+        </div>
+      </div>
+
+      <div class="dashboard-content">
+        <div class="left-col">
+          <div class="glass-card add-expense-card">
+            <h3><i class="ri-add-circle-line"></i> Add Expense</h3>
+            <form id="expense-form">
+              <div class="input-group">
+                <label>Amount</label>
+                <div class="input-icon">
+                  <i class="ri-money-dollar-box-line"></i>
+                  <input type="number" id="expense-amount" placeholder="0.00" min="0.01" step="0.01" required>
+                </div>
+              </div>
+              <div class="input-group">
+                <label>Description</label>
+                <div class="input-icon">
+                  <i class="ri-text"></i>
+                  <input type="text" id="expense-desc" placeholder="E.g., Groceries" required>
+                </div>
+              </div>
+              <div class="input-group">
+                <label>Category</label>
+                <div class="custom-select">
+                  <select id="expense-category" required>
+                    <option value="Groceries">Groceries</option>
+                    <option value="Utilities">Utilities</option>
+                    <option value="Entertainment">Entertainment</option>
+                    <option value="Health">Health</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+              <button type="submit" class="primary-btn w-full">Log Expense</button>
+            </form>
+          </div>
+
+          <div class="glass-card members-card">
+            <div class="card-header">
+              <h3><i class="ri-group-line"></i> Members</h3>
+              <button id="show-add-member-btn" class="icon-btn"><i class="ri-user-add-line"></i></button>
+            </div>
+
+            <div id="add-member-form" class="hidden">
+              <div class="input-group row-group">
+                <input type="text" id="new-member-name" placeholder="Member Name">
+                <button id="add-member-btn" class="primary-btn mini-btn"><i class="ri-check-line"></i></button>
+              </div>
+            </div>
+
+            <ul class="members-list" id="members-list">
+              <!-- Members will be dynamically added here -->
+            </ul>
+          </div>
+        </div>
+
+        <div class="right-col">
+          <div class="glass-card recent-expenses-card">
+            <div class="card-header">
+              <h3><i class="ri-history-line"></i> Recent Expenses</h3>
+              <button id="clear-data-btn" class="icon-btn text-xs text-muted" title="Clear all local data"><i
+                  class="ri-delete-bin-line"></i></button>
+            </div>
+            <div class="expense-list" id="expense-list">
+              <div class="empty-state">
+                <i class="ri-file-list-3-line"></i>
+                <p>No expenses logged yet.</p>
+              </div>
+              <!-- Expenses will be dynamically added here -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Toast -->
+  <div id="toast" class="toast"></div>
+
+  <script src="script.js"></script>
+</body>
+
+</html>
